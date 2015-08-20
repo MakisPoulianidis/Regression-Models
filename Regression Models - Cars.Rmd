@@ -1,22 +1,134 @@
 ---
-title: "Regression Models - Cars"
+title: "Is automatic or manual transmission better for MPG?"
 author: "Bankbintje"
-date: "17 augustus 2015"
+date: "17th august 2015"
 output: pdf_document
 ---
+# Executive Summary
+The magazine Motor Trend is interested in exploring the relationship between a set of variables and miles per gallon (MPG). They are particularly interested in the following two questions:
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+* "Is an automatic or manual transmission better for MPG?”
+* "Quantify the MPG difference between automatic and manual transmissions"
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+The best (i.e. model with the highest adjusted R^2) multivariate regression model was based on *number of cylinders*, *horsepower*, *car weight*, and *transmission type*; explaining 84.0% of variability in the data. These variables were selected using the Akaike Information Criterion (AIC). After validating this model the conclusion is that _cars with manual transmission are better for MPG and have on average a 1.80 higher mpg than cars with automatic transmission._
+
+#Data
+##Exploratory Data Analysis
+This analysis is based on the mtcars dataset from the base r datasets-package. The data was extracted from the 1974 Motor Trend US magazine, and comprises fuel consumption and 10 aspects of automobile design and performance for 32 automobiles (1973–74 models).
+```{r}
+data=mtcars
+```
+The appendix _(table 1 & plots 1-2)_ contains the results of basic data exploration. Main conclusions are: 
+
+* the data does not seem to contain missing values and/or clear outliers. 
+* there is a difference in fuel consumption (mpg) per Transmission Type.  _(see appendix, plot 2)_ 
+* the distribution of fuel consuption (mpg) appears _normal_, this allows for fitting a linear model. _(see appendix, plot 1)_
+
+##Preparing Data
+The dataset is tidy and needs no cleaning. The variables am, cyl, vs, gear and carb will be converted to factors, the values 0 and 1 for transmssion type will be replaced by "Automatic" and "Manual".
+```{r}
+mtcars.clean<-mtcars
+mtcars.clean$am <- as.factor(mtcars$am)
+mtcars.clean$cyl <- as.factor(mtcars$cyl)
+mtcars.clean$vs <- as.factor(mtcars$vs)
+mtcars.clean$gear <- as.factor(mtcars$gear)
+mtcars.clean$carb <- as.factor(mtcars$carb)
+levels(mtcars.clean$am) <-c("Automatic", "Manual")
+```
+# Hypothesis testing
+A simple boxplot suggests that there is  a difference in fuel consumption per transmission type. _(see appendix, plot 2)_  Running a Welch Two Sample t-test could confirm whether the difference is significant and whether we can reject our null-hypothesis that _no significant difference exists between cars with automatic transmission and cars with manual transmission_.
+```{r}
+t.test(mtcars.clean[mtcars.clean$am == "Automatic",]$mpg, 
+       mtcars.clean[mtcars.clean$am == "Manual",]$mpg)
+```
+The low p-value (0.001374) indicates that the probability that this difference is accidental is very low; the difference is *significant* and the null-hypothesis can be rejected. For further quantifying the effect we need to apply linear regression.
+
+# Regression on a single variable
+Perform a simple regression of fuel consumtion (mpg) on transmission type (am):
+```{r results='hide'}
+fit1<-lm(mpg ~ am, data=mtcars.clean)
+```
+The coefficents of this model are:
+```{r}
+summary(fit1)$coef
+```
+The intercept of 17.15 is the mean mpg of cars with automatic transmission. The amManual estimate is the expected change in mpg from automatic transmission to manual transmission. The low p-value (0.000285) might tempt us to conclude that cars with manual transmission have - on average - a 7.25 higher mpg. However, the adjusted R^2 value of this model is quite low:
+```{r}
+summary(fit1)$adj.r.squared
+```
+This means that only 34% of variation can be explained by this regression model; this is not enough to quantify a possible effect.
+
+# Multivariate Regression
+
+## Model Selection
+Creating a model using all variables does not single out any variable with a significant p-value.
+```{r}
+fit.mv.0 <- lm(formula = mpg ~ ., data = mtcars.clean)
+summary(fit.mv.0)
+```
+It does however mark weight and horsepower as significant candidates. Therefore, this will be the first multivariate model we will evaluate:```lm(formula = mpg ~ wt + hp + am, data = mtcars.clean)```
+
+Another approach is to select a model on the Akaike Information Criterion (AIC) using a stepwise algorithm:  ``` step(fit.mv.0,direction="both", k=2)```  This produces the second multivariate model we will evaluate:```lm(formula = mpg ~ cyl + hp + wt + am, data = mtcars.clean)```
+
+## Model Comparison
+The conclusion will be based on the model having the highest Adjusted R^2 value.
+
+#### Model 1 (wt + hp + am)
+
+The R^2 value of the model using weight, horsepower, and transmission type:
 
 ```{r}
-summary(cars)
+fit.mv.1 <- lm(formula = mpg ~ wt + hp + am, data = mtcars.clean)
+summary(fit.mv.1)$adj.r.squared
 ```
 
-You can also embed plots, for example:
+#### Model 2 (cyl + hp + wt + am)
 
-```{r, echo=FALSE}
-plot(cars)
+The R^2 value of the model using nbr of cylinders, horsepower, weight, and transmission type:
+
+```{r}
+fit.mv.2 <- (lm(formula = mpg ~ cyl + hp + wt + am, data = mtcars.clean))
+summary(fit.mv.2)$adj.r.squared
+```
+We will use model 2 that was selected using AIC because of its (slightly) higher Adjusted R^2, provided no anomalies pop up during model diagnosis.
+
+
+## Model Diagnosis
+The diagnostic plots _(see appendix, plot 3)_ confirm that 
+
+* no pattern exists in the residuals vs. fitted plot (i.e. independence)
+* the Q-Q plot produces a line (i.e. residuals are distributed normally)
+* no pattern exists in the scale-location plot (i.e. constant variance)
+* the data contains no influential outliers in the residuals vs. leverage plot.
+
+# Appendix        
+## Tables
+
+### Table 1: Summary of MPG per transmission type
+```{r}
+by(mtcars$mpg, mtcars$am, summary)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+## Plots
+
+### Plot 1: Density plot MPG
+```{r}
+plot(density(mtcars$mpg))
+```
+
+### Plot 2: Boxplot MPG and Transmission Type
+```{r warning=FALSE}
+library(ggplot2)
+ggplot(mtcars.clean, aes(x=am, y=mpg, fill=am)) + 
+        geom_boxplot() + 
+        geom_jitter() +  
+        ylab("Miles per Gallon") + 
+        xlab("Transmission Type") + 
+        theme(legend.title=element_blank())
+```
+
+### Plot 3: Diagnostics
+```{r}
+par(mfrow = c(2, 2))
+plot(fit.mv.2)
+```
